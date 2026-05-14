@@ -6,12 +6,9 @@ The application source is based on [hkhcoder/vprofile-project](https://github.co
 
 ---
 
-## Repositories
+## Architecture Diagram
 
-| Repo | Purpose |
-|---|---|
-| [`iac-vprofile`](https://github.com/SalmaEasa/iac-vprofile) | Terraform IaC — provisions VPC, EKS cluster, and nginx ingress |
-| [`vprofile-action`](https://github.com/SalmaEasa/vprofile-action) | App CI/CD — test, build Docker image, push to ECR, deploy via Helm |
+![Architecture Diagram](./demo%26screenshots/arch_diagram.png)
 
 ---
 
@@ -23,10 +20,13 @@ GitHub Actions (iac-vprofile)
         ▼
   Terraform ──► AWS VPC (172.20.0.0/16)
                     │
-                    ▼
-              EKS Cluster (vprofile-eks)
-              ├── node-group-1 (t3.small, 1–3 nodes)
-              └── node-group-2 (t3.small, 1–2 nodes)
+                    ├── Public Subnets  ──► NAT Gateway + Load Balancer
+                    └── Private Subnets ──► EKS Worker Nodes
+                              │
+                              ▼
+                        EKS Cluster (vprofile-eks)
+                        ├── node-group-1 (t3.small, 1–3 nodes)
+                        └── node-group-2 (t3.small, 1–2 nodes)
 
 GitHub Actions (vprofile-action)
         │
@@ -37,6 +37,15 @@ GitHub Actions (vprofile-action)
 
 **Application stack:** Spring MVC · Spring Security · MySQL · Memcached · RabbitMQ · Elasticsearch  
 **Exposed via:** nginx ingress controller → AWS Load Balancer → Route 53
+
+---
+
+## Repositories
+
+| Repo | Purpose |
+|---|---|
+| [`iac-vprofile`](https://github.com/SalmaEasa/iac-vprofile) | Terraform IaC — provisions VPC, EKS cluster, and nginx ingress |
+| [`vprofile-action`](https://github.com/SalmaEasa/vprofile-action) | App CI/CD — test, build Docker image, push to ECR, deploy via Helm |
 
 ---
 
@@ -86,29 +95,65 @@ Set these in each repo's GitHub Actions secrets:
 ### Live App Demo
 ![Vprofile app demo](./demo%26screenshots/demo.gif)
 
+---
+
 ### S3 Terraform State Backend
+Terraform state is stored remotely in S3, enabling safe concurrent runs and state locking.
+
 ![S3 bucket storing Terraform remote state](./demo%26screenshots/s3.png)
 
+---
+
 ### VPC & Subnets
+The VPC (`172.20.0.0/16`) is split into public and private subnets across 3 availability zones. Worker nodes live in private subnets and are never directly exposed to the internet. The public subnets host the NAT Gateway and the AWS Load Balancer.
+
 ![VPC created with public and private subnets](./demo%26screenshots/vpc%20created%20and%20subnets.png)
 
+---
+
 ### NAT Gateway
+A single NAT Gateway in the public subnet gives worker nodes outbound internet access (for pulling images, reaching the EKS control plane, etc.) without exposing them inbound.
+
 ![NAT gateway for private subnet outbound traffic](./demo%26screenshots/nat%20gateway.png)
 
+---
+
 ### EKS Cluster
+The `vprofile-eks` cluster running Kubernetes 1.32, provisioned via the `terraform-aws-modules/eks` module.
+
 ![EKS cluster provisioned and active](./demo%26screenshots/eks%20cluster.png)
 
+---
+
 ### Node Groups
+Two managed node groups using `t3.small` instances. Node Group 1 scales 1–3 nodes, Node Group 2 scales 1–2 nodes.
+
 ![EKS managed node groups](./demo%26screenshots/node%20groups.png)
 
+---
+
 ### Nodes
+Worker nodes running inside the private subnets, registered and ready in the cluster.
+
 ![Worker nodes running in the cluster](./demo%26screenshots/nodes.png)
 
+---
+
 ### Load Balancer
+The nginx ingress controller automatically provisions an AWS Load Balancer in the public subnet to handle inbound traffic and route it to the worker nodes.
+
 ![AWS Load Balancer created by nginx ingress controller](./demo%26screenshots/load_balancer.png)
 
+---
+
 ### Route 53 Record
+A Route 53 DNS record points `vprofile.salma-app.site` to the Load Balancer, making the app publicly accessible.
+
 ![Route 53 DNS record pointing to the load balancer](./demo%26screenshots/route53%20record.png)
 
+---
+
 ### SonarCloud Analysis
+Every pipeline run triggers a SonarCloud scan for code quality, test coverage, and Checkstyle violations.
+
 ![SonarCloud code quality scan results](./demo%26screenshots/sonarcloud.png)
